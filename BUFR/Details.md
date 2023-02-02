@@ -11,6 +11,9 @@ Within this folder are a subset of folders. The funcs-folder contains python-scr
   <dd>get_keywords.py</dd>
   <dd>useful_functions.py</dd>
 
-  <dt>Markdown in HTML</dt>
-  <dd>Does *not* work **very** well. Use HTML <em>tags</em>.</dd>
+  <dt>temp</dt>
+  <dd><b>complete(?)</dd>
+  <dd>main_temp.py</dd>
+  <dd>temp_config.cfg</dd>
+  <dd>temp_run.sh</dd>
 </dl>
