@@ -26,3 +26,7 @@ Opens the folder containing the bufr file and returns all files
 
 #### bufr_2_json(file)
 This function converts bufr file to json file using the eccodes bufr_dump. By running "bufr_dump -j f [file]", the bufr file is converted to a flat layed json output in terminal. Using the subprocess-module, the terminal output is saved as a variable. Once loaded as json, the file undergoes a couple of iterations to be sorted in order for it to be more easily converted to dataframe/dataarray.
+
+#### return_list_of_stations(get_files)
+This function is used if --update is parsed. It returns a list of all stations within a time interval, and allows for comparing which stations have already existing files and which do not.
+
