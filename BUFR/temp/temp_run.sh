@@ -8,6 +8,6 @@
 #$ -j y
 
 source /modules/centos7/conda/Feb2021/etc/profile.d/conda.sh
-conda activate secondenv
+conda activate production-10-2022
 
-python /home/katarinana/work_desk/BUFR/temp/main_temp.py -c /home/katarinana/work_desk/BUFR/temp/temp_config.cfg -u -t block -a 
+python [filepath + file] -c [configpath + config] -u -t block -a 
