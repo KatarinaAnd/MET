@@ -13,25 +13,23 @@ import argparse
 from io import StringIO
 import logging
 from logging.handlers import TimedRotatingFileHandler
-import matplotlib.pyplot as plt
 import numpy as np
 import traceback
 from SPARQLWrapper import SPARQLWrapper, JSON
 import operator
 import re
 from dateutil.relativedelta import relativedelta
-sys.path.append('/home/katarinana/work_desk/BUFR/funcs')
+sys.path.append('/home/katarinana/work_desk/BUFR/funcs') #path to code_tables.py, get_keywords.py and useful_functions.py 
 from get_keywords import get_keywords
 from code_tables import *
 from useful_functions import *
-import netCDF4
 import glob
 from datetime import datetime, timedelta, date
 from calendar import monthrange, month_name
 
 def parse_arguments():
 
-    # gathers the commands
+    # reads arguments parsed from terminal
 
     parser = argparse.ArgumentParser()
     
@@ -79,12 +77,18 @@ def parse_arguments():
     return args
 
 def parse_cfg(cfgfile):
-
+    
+    # reads the configuration file
+    
     with open(cfgfile, 'r') as ymlfile:
         cfgstr = yaml.full_load(ymlfile)
     return cfgstr
 
 def get_files_specified_dates(desired_path):
+    
+    # if the user wants to extract data from specific dates, this function will run.
+    # it opens up the file folder, checks the date from the parser input and returns a list of
+    # files that contains data from within the timeinterval given. 
     
     get_args = parse_arguments()
 
@@ -118,7 +122,7 @@ def get_files_specified_dates(desired_path):
     endday = [] 
     for i in sorted_files:
         if start in i:
-           startday.append(i) 
+            startday.append(i) 
         if end in i:
             endday.append(i)
             
@@ -147,38 +151,6 @@ def get_files_initialize(desired_path):
             files.append(file_path)
     return files
 
-def get_files_update(desired_path, desired_directory):
-    dates_from_des_dir = []
-    #print(os.listdir(desired_directory))
-    #sys.exit()
-    for file in os.listdir(desired_directory):
-        #print(datetime.strptime(file[-18:-3]))
-        #sys.exit()
-        dates_from_des_dir.append(datetime.strptime(file[-18:-3], "%Y%m%dT%H%M%S"))
-    last_date = max(dates_from_des_dir).strftime("%Y%m%d%H")
-    
-    files = []
-    for file in os.listdir(desired_path):
-        if file.endswith('.bufr'):
-            files.append(datetime.strptime(file[5:-5], "%Y%m%d%H"))
-    
-    files = sorted(files)
-    sorted_files = []
-    for i in files:
-        sorted_files.append(desired_path + "/syno_" + datetime.strftime(i, "%Y%m%d%H") + '.bufr')
-    
-    startday = []
-    for i in sorted_files:
-        if last_date in i:
-            startday.append(i)
-    
-    try:
-        startpoint_index = sorted_files.index(startday[0])
-        return sorted_files[startpoint_index:]
-    except:
-        return get_files_initialize(desired_path)
-    
-    
     
 def bufr_2_json(file):
     
@@ -257,8 +229,6 @@ def return_list_of_stations(get_files):
     
     return stations
 
-parse = parse_arguments()
-#print(return_list_of_stations(get_files_specified_dates(parse_cfg(parse.cfgfile)['station_info']['path'])))
 
 def sorting_hat(get_files, stations = 1):
     cfg = parse_cfg(parse_arguments().cfgfile)
@@ -291,14 +261,10 @@ def sorting_hat(get_files, stations = 1):
 
     
 def json_to_ds(msg):
-    #print(msg)
-    #sys.exit()
-
-
-    tacos = []
+    dfs = []
     
-    #check_list = ['pressure', 'verticalSoundingSignificance', 'nonCoordinateGeopotential',
-    #              'airTemperature', 'dewpointTemperature', 'windDirection', 'windSpeed']
+    check_list = ['pressure', 'verticalSoundingSignificance', 'nonCoordinateGeopotential',
+                  'airTemperature', 'dewpointTemperature', 'windDirection', 'windSpeed']
     
     xars = []
     pressure_ds = []
@@ -309,7 +275,6 @@ def json_to_ds(msg):
     for i in msg:
         count1 = 0
         count2 = 0
-        #tacos1 = []
    
         pressure = []
         other = []
@@ -320,7 +285,7 @@ def json_to_ds(msg):
             if j['key'] == 'pressure':
                 count1 += 1
                 pressure.append({'{}'.format(j['value']):[]})
-            elif count1 != 0:
+            elif count1 != 0 and j['key'] in check_list:
                 pressure[count1-1]['{}'.format(str(pressure[count1-1].keys())[12:-3])].append(j)
             else:
                 other.append(j)
@@ -351,55 +316,51 @@ def json_to_ds(msg):
         
         for k in pressure:
             for l in k:
-                taco = pd.DataFrame.from_dict(k[l])
-                taco = taco[['key','value']].copy().transpose().reset_index().drop(columns=['index'])
-                header = taco.iloc[0]
-                taco = taco[1:]
-                taco.columns = header
-                taco['pressure'] = k
-                taco['index'] = count2
-                taco = taco.set_index('index')
+                
+                tiny_df = pd.DataFrame.from_dict(k[l])
+                tiny_df = tiny_df[['key','value']].copy().transpose().reset_index().drop(columns=['index'])
+                header = tiny_df.iloc[0]
+                tiny_df = tiny_df[1:]
+                tiny_df.columns = header
+                tiny_df['pressure'] = list(k.keys())[0]
+                tiny_df['index'] = count2
+                tiny_df = tiny_df.set_index('index')
+                
                 vars_we_dont_want = search_func(['dataPresentIndicator','centre', 
-                                                 'generatingApplication','extendedDelayedDescriptorReplicationFactor'], 
-                                                list(taco))
-                taco = taco.drop(columns=vars_we_dont_want)
-                tacos.append(taco)
+                                                 'generatingApplication','extendedDelayedDescriptorReplicationFactor',
+                                                'delayedDescriptorReplicationFactor'], 
+                                                list(tiny_df))
+                tiny_df = tiny_df.drop(columns=vars_we_dont_want)
+                dfs.append(tiny_df)
                 count2 += 1
         try:
-            if len(tacos) > 1:        
-                full_taco = pd.concat(tacos[:-1], ignore_index=True)
-            elif len(tacos) == 1:
-                full_taco = tacos[0]
+            if len(dfs) > 1:        
+                big_df = pd.concat(dfs[:-1], ignore_index=True)
+            elif len(dfs) == 1:
+                big_df = dfs[0]
             else:
                 print('could not extract data')
                 return
         except:
-            for i in tacos:
+            for i in dfs:
                 print(i.columns)
 
         
         
-        for column in full_taco.columns:
+        for column in big_df.columns:
             try:
-                full_taco[column] = pd.to_numeric(full_taco[column])
+                big_df[column] = pd.to_numeric(big_df[column])
             except:
-                full_taco[column] = full_taco[column]
+                big_df[column] = big_df[column]
                 
-        full_taco = full_taco.reset_index()
-        full_taco = full_taco[full_taco.pressure != 'None']
-        full_taco['time'] = [blob for i in range(len(full_taco['{}'.format(full_taco.columns[0])]))]
-        full_taco = full_taco.set_index(['time','pressure'])
-        full_taco = full_taco.drop(columns=['index'])
-        full_taco = full_taco.fillna(-9999)
-        
-        pressure_ds.append(full_taco)
-            
-        #if 'second' in df_vals.columns:
-        #    df_vals['time'] = blob
-        #    df_vals = df_vals.drop(columns = ['key','year', 'month', 'day','hour', 'minute', 'second'])
-        #else:
-        #    df_vals['time'] = blob
-        #    df_vals = df_vals.drop(columns = ['key','year', 'month', 'day','hour', 'minute'])
+        big_df = big_df.reset_index()
+        big_df = big_df[big_df.pressure != 'None']
+        big_df['time'] = [blob for i in range(len(big_df['{}'.format(big_df.columns[0])]))]
+        big_df = big_df.set_index(['time','pressure'])
+        big_df = big_df.drop(columns=['index'])
+        big_df = big_df[~big_df.index.duplicated()]
+        big_df = big_df.fillna(-9999)
+        pressure_ds.append(big_df)
                 
         df_vals = df_vals.set_index('time')
         cols = pd.io.parsers.base_parser.ParserBase({'names':df_vals.columns, 'usecols':None})._maybe_dedup_names(df_vals.columns)
@@ -440,9 +401,6 @@ def json_to_ds(msg):
         message = ('no data')
         return message
     
-    tik = tik[~tik.index.duplicated()]
-    tik = tik.to_xarray()
-
     if len(other_ds) > 1:
         tak = pd.concat(other_ds)
     elif len(other_ds) == 1:
@@ -451,20 +409,18 @@ def json_to_ds(msg):
         message = ('no data')
         return message
     
-    tak = tak[~tak.index.duplicated()]
-    tak = tak.to_xarray()
     
     if units_df.empty:
         units_df= pd.DataFrame({'key': ['something','to','make', 'it' ,'pass']})
     else:
         units_df = units(df_units)
     
-    tik = tik.drop_duplicates(dim="time")
-    tak = tak.drop_duplicates(dim="time")
-    
-    main_ds = xr.combine_by_coords([tik, tak])
+    ds_station1 = tik.to_xarray()
+    ds_station2 = tak.to_xarray()
+   
+    main_ds = xr.combine_by_coords([ds_station1, ds_station2])
 
-    
+    print(main_ds)
     # some variables only need the first value as they are not dependent on time
     vars_one_val = ['blockNumber', 'stationNumber','latitude',
                     'longitude', 'heightOfStation', 'wigosIdentifierSeries', 'wigosIssuerOfIdentifier',
@@ -596,23 +552,22 @@ def json_to_ds(msg):
 def set_encoding(ds, fill=-9999, time_name = 'time', time_units='seconds since 1970-01-01 00:00:00'):
     
     all_encode = {}
-        
-    for v in list(ds.keys()):
+    liste = list(ds.keys())
+    for v in liste:
         #if v == 'softwareVersionNumber':
          #   encode = {'zlib': True, 'complevel': 9, '_FillValue':fill}
-
-        if 'float' in str(ds[v].dtype):
+        print(v)
+        if v == 'time':
+            dtip = 'i4'
+        elif 'float' in str(ds[v].dtype):
             dtip = 'f4'
-            encode = {'zlib': True, 'complevel': 9, 'dtype': dtip, '_FillValue':fill}
         elif 'int' in str(ds[v].dtype):
             dtip = 'i4'
-            encode = {'zlib': True, 'complevel': 9, 'dtype': dtip, '_FillValue':fill}
-        else:
-            encode = {'zlib': True, 'complevel': 9}
+        encode = {'zlib': True, 'complevel': 9, 'dtype': dtip, '_FillValue':fill}
+
             
         all_encode[v] = encode
-    all_encode['pressure'] = {'zlib': True, 'complevel':9, 'dtype': 'f4', '_FillValue': fill}
-    all_encode['time'] = {'zlib': True, 'complevel':9, 'dtype': 'i4', '_FillValue': fill}
+
     return all_encode
 
 def saving_grace(file, key, destdir):
@@ -621,7 +576,8 @@ def saving_grace(file, key, destdir):
     
         
     #gb = gb.sortby('time')
-    
+    print(file.time.values[0])
+    print(type(file.time.values[0]))
     for group_name, group_da in gb:
         #group_da = file
         t1 = group_da.time.isel(time=0).values.astype('datetime64[s]')
@@ -633,32 +589,28 @@ def saving_grace(file, key, destdir):
         timestring1 = t1.strftime('%Y%m%dT%H%M%S')
         timestring2 = t2.strftime('%Y%m%dT%H%M%S')
 
+        group_da['time'].attrs['units'] = "seconds since 1970-01-01 00:00:00"
+        group_da['time'].attrs['standard_name'] = 'time'
+        group_da['time'].attrs['long_name'] = 'time'
+        group_da['time'].attrs['coverage_content_type'] = 'referenceInformation'
+        
+        group_da['pressure'].attrs['units'] = "hPa"
+        group_da['pressure'].attrs['standard_name'] = 'air_pressure'
+        group_da['pressure'].attrs['long_name'] = 'air_pressure'
+        group_da['pressure'].attrs['coverage_content_type'] = 'referenceInformation'
+        
+        group_da.attrs['id'] = 'temp_{}_{}-{}.nc'.format(key, timestring1, timestring2)
+        group_da.attrs['title'] = 'Measurements from station with station identifier number {}'.format(key)
 
         ds_dictio = group_da.to_dict()
 
         bad_time = ds_dictio['coords']['time']['data']
         ds_dictio['coords']['time']['data'] = np.array([((ti - datetime(1970,1,1)).total_seconds()) for ti in bad_time]).astype('i4')
+        print(ds_dictio['coords']['time'])
         ds_dictio['coords']['pressure']['data'] = np.float32(ds_dictio['coords']['pressure']['data'])
         all_ds_station_period = xr.Dataset.from_dict(ds_dictio)
-        all_ds_station_period = all_ds_station_period.rename_dims({'pressure': 'obs', 'time': 'profile'})
-
-
-        
-        all_ds_station_period = all_ds_station_period.fillna(-9999)
-        all_ds_station_period['time'].attrs['units'] = "seconds since 1970-01-01 00:00:00"
-        all_ds_station_period['time'].attrs['standard_name'] = 'time'
-        all_ds_station_period['time'].attrs['long_name'] = 'time'
-        all_ds_station_period['time'].attrs['coverage_content_type'] = 'referenceInformation'
-        
-        all_ds_station_period['pressure'].attrs['units'] = "hPa"
-        all_ds_station_period['pressure'].attrs['standard_name'] = 'air_pressure'
-        all_ds_station_period['pressure'].attrs['long_name'] = 'air_pressure'
-        all_ds_station_period['pressure'].attrs['coverage_content_type'] = 'referenceInformation'
-        
-        all_ds_station_period.attrs['id'] = 'temp_{}_{}-{}.nc'.format(key, timestring1, timestring2)
-        all_ds_station_period.attrs['title'] = 'Measurements from station with station identifier number {}'.format(key)
-        all_ds_station_period.to_netcdf('{}/temp_{}_{}-{}.nc'.format(destdir, key, timestring1, timestring2),
-                                            engine='netcdf4', encoding=set_encoding(all_ds_station_period))
+        print(all_ds_station_period['time'])
+        all_ds_station_period.to_netcdf('{}/temp_{}_{}-{}.nc'.format(destdir, key, timestring1, timestring2), encoding=set_encoding(all_ds_station_period, time_units='seconds since 1970-01-01 00:00:00'))
 
             
 if __name__ == "__main__":
