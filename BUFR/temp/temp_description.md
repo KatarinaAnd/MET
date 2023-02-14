@@ -10,3 +10,15 @@ reads arguments parsed from terminal. Takes in following arguements:
 * -u, --update: reads the files from output folder to find the last date to update from. Goes to the folder containing bufr files and collects data from said date.
 * -a, --all: extracts data from all available stations
 * -st, --station: extracts data from specified station. Must be in the from "st1 st2 .. stn". If the stationtype, t = block, the stations have to be specified through "[blockNumber][stationNumber]". If t = wigos the stations have to be specified as "[wigosIdentifierSeries]-[wigosIssuerOfIdentifier]-[wigosIssueNumber]-[wigosLocalIdentifierCharacter]", and if t = radio the stations must be specified as "[radiosondeSerialNumber]"
+
+
+#### parse_cfg(cfgfile)
+
+Returns the arguments from the configuration file parsed by user.
+
+#### get_files_specified_dates(desired_path)
+
+If the user wants to extract data from specific dates, this function will run. It opens up the file folder, checks the date from the parser input and returns a list of files that contains data from within the timeinterval given. 
+
+#### get_files_initialize(desired_path)
+
