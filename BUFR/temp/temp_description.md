@@ -30,3 +30,6 @@ This function converts bufr file to json file using the eccodes bufr_dump. By ru
 #### return_list_of_stations(get_files)
 This function is used if --update is parsed. It returns a list of all stations within a time interval, and allows for comparing which stations have already existing files and which do not.
 
+#### sorting_hat(get_files)
+Sorts the data by station. Returns a dictionary with the stationname as key, and each message contains data from one timestamp.
+
