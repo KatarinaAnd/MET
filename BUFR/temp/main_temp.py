@@ -96,6 +96,7 @@ def get_files_specified_dates(desired_path):
     path = parse_cfg(get_args.cfgfile)['station_info']['path']
 
     # open up path to files and sort the files such that the date is in chronological order
+    
     files = []
     for file in os.listdir(desired_path):
         if file.endswith('.bufr'):
@@ -120,6 +121,7 @@ def get_files_specified_dates(desired_path):
     
     startday = []       
     endday = [] 
+    
     for i in sorted_files:
         if start in i:
             startday.append(i) 
@@ -172,9 +174,7 @@ def bufr_2_json(file):
             except:
                 continue
     
-    # sorting so that height of measurement equipment is a variable attribute instead of variabl
-    
-        
+
     finale= []
     for msg in sorted_messages:
         time_code = ['004024', '004025']
@@ -199,6 +199,9 @@ def bufr_2_json(file):
 
 
 def return_list_of_stations(get_files):
+    
+    # returns the list of stations, given a stationtype, within a timeinterval defined by startdate/enddate
+    
     cfg = parse_cfg(parse_arguments().cfgfile)
     stationtype = parse_arguments().stationtype
     stations = []
@@ -230,12 +233,16 @@ def return_list_of_stations(get_files):
     return stations
 
 
-def sorting_hat(get_files, stations = 1):
+def sorting_hat(get_files):
+    
+    # sorts the json-file to a dictionary consisting of station-name as key and a list of the json-data within
+    # the timeinterval as its value.
+    
     cfg = parse_cfg(parse_arguments().cfgfile)
     
-    if not parse_arguments().spec_station and stations == 1:
+    if not parse_arguments().spec_station:
         stations = return_list_of_stations(get_files)
-    elif parse_arguments().spec_station and stations == 1:
+    elif parse_arguments().spec_station:
         stations = parse_arguments().spec_station
         
     stations_dict = {i : [] for i in stations}
@@ -258,15 +265,17 @@ def sorting_hat(get_files, stations = 1):
     
     return stations_dict
 
-
     
 def json_to_ds(msg):
+    
     dfs = []
+    
+    
+    # these are the variables that usually is measured in the vertical, if there is more then this needs to be modified
     
     check_list = ['pressure', 'verticalSoundingSignificance', 'nonCoordinateGeopotential',
                   'airTemperature', 'dewpointTemperature', 'windDirection', 'windSpeed']
     
-    xars = []
     pressure_ds = []
     other_ds = []
     df_units = []
@@ -279,28 +288,33 @@ def json_to_ds(msg):
         pressure = []
         other = []
         for_units = []
-     
+        
+        # creating one df for the data that has a vertical coordinate and another for those who only are dependent on time
+        # first sorting data into lists named pressure and other
+        
         for j in i:    
             for_units.append({j['key']: {'units':j['units'], 'code':j['code']}})
             if j['key'] == 'pressure':
                 count1 += 1
                 pressure.append({'{}'.format(j['value']):[]})
-            elif count1 != 0 and j['key'] in check_list:
+            elif count1 != 0:
                 pressure[count1-1]['{}'.format(str(pressure[count1-1].keys())[12:-3])].append(j)
             else:
                 other.append(j)
         
-        df = pd.DataFrame(filter_section(other))
+        # fixing a dataframe for the data only dependent on time first
         
-        # need to filter of some more 
+        df = pd.DataFrame(filter_section(other)) # filter_section is a function from useful_functions.py
         df = df[['key','value','units','code']].copy()
-        
         df_vals = df[['key','value']].copy()
         
         df_vals = df_vals.transpose()
         df_vals = df_vals.reset_index()
         df_vals = df_vals.rename(columns=df_vals.iloc[0])
         df_vals = df_vals.drop(df.index[0])
+        
+        
+        # creating a timestamp. Some data have timestamp with seconds, others have not.
         
         try:
             blob = (str(int(df_vals['year'][1])).zfill(4) + '-' + str(int(df_vals['month'][1])).zfill(2) + '-' + str(int(df_vals['day'][1])).zfill(2) + ' ' + str(int(df_vals['hour'][1])).zfill(2) + ':' +  str(int(df_vals['minute'][1])).zfill(2) + ':' + str(int(df_vals['second'][1])).zfill(2))
@@ -313,10 +327,10 @@ def json_to_ds(msg):
             df_vals['time'] = blob
             df_vals = df_vals.drop(columns = ['key','year', 'month', 'day','hour', 'minute'])
         
+        # now fixing a dataframe for data with a vertical coordinate
         
         for k in pressure:
             for l in k:
-                
                 tiny_df = pd.DataFrame.from_dict(k[l])
                 tiny_df = tiny_df[['key','value']].copy().transpose().reset_index().drop(columns=['index'])
                 header = tiny_df.iloc[0]
@@ -326,6 +340,9 @@ def json_to_ds(msg):
                 tiny_df['index'] = count2
                 tiny_df = tiny_df.set_index('index')
                 
+                # this can be modified if we want some of these vars, but then we have to make sure that all the dfs
+                # later stored in the list named dfs have the same columns.
+                
                 vars_we_dont_want = search_func(['dataPresentIndicator','centre', 
                                                  'generatingApplication','extendedDelayedDescriptorReplicationFactor',
                                                 'delayedDescriptorReplicationFactor'], 
@@ -333,26 +350,26 @@ def json_to_ds(msg):
                 tiny_df = tiny_df.drop(columns=vars_we_dont_want)
                 dfs.append(tiny_df)
                 count2 += 1
-        try:
-            if len(dfs) > 1:        
-                big_df = pd.concat(dfs[:-1], ignore_index=True)
-            elif len(dfs) == 1:
-                big_df = dfs[0]
-            else:
-                print('could not extract data')
-                return
-        except:
-            for i in dfs:
-                print(i.columns)
+        
+        # concating the vertical data together to make it also timedependent
 
-        
-        
+        if len(dfs) > 1:        
+            big_df = pd.concat(dfs[:-1], ignore_index=True)
+        elif len(dfs) == 1:
+            big_df = dfs[0]
+        else:
+            print('could not extract data')
+            return
+
+
         for column in big_df.columns:
             try:
                 big_df[column] = pd.to_numeric(big_df[column])
             except:
                 big_df[column] = big_df[column]
-                
+        
+        # fixing the df such that the dimensions/coordinates are correct
+        
         big_df = big_df.reset_index()
         big_df = big_df[big_df.pressure != 'None']
         big_df['time'] = [blob for i in range(len(big_df['{}'.format(big_df.columns[0])]))]
@@ -361,19 +378,16 @@ def json_to_ds(msg):
         big_df = big_df[~big_df.index.duplicated()]
         big_df = big_df.fillna(-9999)
         pressure_ds.append(big_df)
-                
-        df_vals = df_vals.set_index('time')
-        cols = pd.io.parsers.base_parser.ParserBase({'names':df_vals.columns, 'usecols':None})._maybe_dedup_names(df_vals.columns)
         
-        df_vals.columns = cols # will add a ".1",".2" etc for each double name
-        for column in df_vals.columns:
-            try:
-                df_vals[column] = pd.to_numeric(df_vals[column])
-            except:
-                df_vals[column] = df_vals[column]
+        # fixing the df without vertical data
+        df_vals = df_vals.set_index('time')
+        
+        cols = pd.io.parsers.base_parser.ParserBase({'names':df_vals.columns, 'usecols':None})._maybe_dedup_names(df_vals.columns)
+        df_vals.columns = cols # will add a ".1",".2" etc if a variable name occurs more than one
         df_vals = df_vals.fillna(-9999)
         other_ds.append(df_vals)
         
+        # fixing a unit df so that when the data is transferred to dataset we can easily add units as variable attributes.
         units_df = pd.DataFrame(for_units)
 
         new_unit = pd.DataFrame()
@@ -392,7 +406,7 @@ def json_to_ds(msg):
         df_units.append(new_unit)
     
     
-    
+    # concating the df with time and vertical coordinates
     if len(pressure_ds) > 1:
         tik = pd.concat(pressure_ds)
     elif len(pressure_ds) == 1:
@@ -401,6 +415,7 @@ def json_to_ds(msg):
         message = ('no data')
         return message
     
+    #concating the df with only time coordinates
     if len(other_ds) > 1:
         tak = pd.concat(other_ds)
     elif len(other_ds) == 1:
@@ -420,7 +435,8 @@ def json_to_ds(msg):
    
     main_ds = xr.combine_by_coords([ds_station1, ds_station2])
 
-    print(main_ds)
+    
+    
     # some variables only need the first value as they are not dependent on time
     vars_one_val = ['blockNumber', 'stationNumber','latitude',
                     'longitude', 'heightOfStation', 'wigosIdentifierSeries', 'wigosIssuerOfIdentifier',
@@ -430,13 +446,15 @@ def json_to_ds(msg):
             main_ds[i] = main_ds[i].isel(time=0)
     
     to_get_keywords = []
-    #print(main_ds.keys())
+    
+    # now adding the attributes to the data variables
     for variable in main_ds.keys():
-        #print('var : ', variable)
-        kokko = variable
+        
         var = variable
         if variable[-2] == '.':
             var = variable[:-2]
+            
+        # substituting the "_" with no space and capital letter
         change_upper_case = re.sub('(?<!^)(?=\d{2})', '_',re.sub('(?<!^)(?=[A-Z])', '_', var)).lower()
         
         # checking for standardname
@@ -447,7 +465,7 @@ def json_to_ds(msg):
                          'heightOfBaseOfCloud':'cloud_base_altitude'}
         if var in manual_stdname.keys():
             main_ds[variable].attrs['standard_name'] = manual_stdname[var]
-        #print('kokko1: ',kokko)
+
         # adding long name. if variable has a height attribute, add it in the long name. if variable has a time attribute, add it in the long name.
         long_name = re.sub('_',' ', change_upper_case)
         main_ds[variable].attrs['long_name'] = long_name
@@ -503,7 +521,6 @@ def json_to_ds(msg):
         
 
     #### GLOBAL ATTRIBUTES #####
-    ################# REQUIRED GLOBAL ATTRIBUTES ###################
     # this probably might have to be modified
     keywords, keywords_voc = get_keywords(to_get_keywords)
     cfg = parse_cfg(parse_arguments().cfgfile)
@@ -551,12 +568,11 @@ def json_to_ds(msg):
 
 def set_encoding(ds, fill=-9999, time_name = 'time', time_units='seconds since 1970-01-01 00:00:00'):
     
+    # returns a dictionary with the encoding for when saving the file
+    
     all_encode = {}
     liste = list(ds.keys())
     for v in liste:
-        #if v == 'softwareVersionNumber':
-         #   encode = {'zlib': True, 'complevel': 9, '_FillValue':fill}
-        print(v)
         if v == 'time':
             dtip = 'i4'
         elif 'float' in str(ds[v].dtype):
@@ -571,24 +587,23 @@ def set_encoding(ds, fill=-9999, time_name = 'time', time_units='seconds since 1
     return all_encode
 
 def saving_grace(file, key, destdir):
+    
+    # first sorting the ds such that time is in chronological order
     file = file.sortby('time')
+    
+    # this decides what time interval we 
     gb = file.groupby('time.month')
     
-        
-    #gb = gb.sortby('time')
-    print(file.time.values[0])
-    print(type(file.time.values[0]))
     for group_name, group_da in gb:
-        #group_da = file
         t1 = group_da.time.isel(time=0).values.astype('datetime64[s]')
         t1 = t1.astype(datetime)
         t2 = group_da.time.isel(time=-1).values.astype('datetime64[s]')
         t2 = t2.astype(datetime)
 
-
         timestring1 = t1.strftime('%Y%m%dT%H%M%S')
         timestring2 = t2.strftime('%Y%m%dT%H%M%S')
-
+        
+        # making sure that time and pressure have correct attributes
         group_da['time'].attrs['units'] = "seconds since 1970-01-01 00:00:00"
         group_da['time'].attrs['standard_name'] = 'time'
         group_da['time'].attrs['long_name'] = 'time'
@@ -599,17 +614,20 @@ def saving_grace(file, key, destdir):
         group_da['pressure'].attrs['long_name'] = 'air_pressure'
         group_da['pressure'].attrs['coverage_content_type'] = 'referenceInformation'
         
+        # global attributes that changes for each file
         group_da.attrs['id'] = 'temp_{}_{}-{}.nc'.format(key, timestring1, timestring2)
         group_da.attrs['title'] = 'Measurements from station with station identifier number {}'.format(key)
 
+        
+        # must change time from datetime64 to int32
         ds_dictio = group_da.to_dict()
-
         bad_time = ds_dictio['coords']['time']['data']
         ds_dictio['coords']['time']['data'] = np.array([((ti - datetime(1970,1,1)).total_seconds()) for ti in bad_time]).astype('i4')
-        print(ds_dictio['coords']['time'])
         ds_dictio['coords']['pressure']['data'] = np.float32(ds_dictio['coords']['pressure']['data'])
+        
+        
+        #lastly, saving
         all_ds_station_period = xr.Dataset.from_dict(ds_dictio)
-        print(all_ds_station_period['time'])
         all_ds_station_period.to_netcdf('{}/temp_{}_{}-{}.nc'.format(destdir, key, timestring1, timestring2), encoding=set_encoding(all_ds_station_period, time_units='seconds since 1970-01-01 00:00:00'))
 
             
@@ -626,8 +644,6 @@ if __name__ == "__main__":
         sorted_files = sorting_hat(get_files_initialize(frompath))
         for key, val in sorted_files.items():
             file = json_to_ds(sorted_files['{}'.format(key)])
-            #file.to_netcdf('test1.nc')
-            #sys.exit()
             saving = saving_grace(file, key, destdir)
         
                
@@ -771,12 +787,9 @@ if __name__ == "__main__":
         print('creating files from {}'.format(parse.startday))
         
         sorted_files = sorting_hat(get_files_specified_dates(frompath))
-        #print(sorted_files.keys)
         for key,val in sorted_files.items():
             file = json_to_ds(sorted_files['{}'.format(key)])
             saving = saving_grace(file, key, destdir)
-            #print(file)
-            #sys.exit()
         
     else:
         print('either type in -i, -u or enter starday/endday')
