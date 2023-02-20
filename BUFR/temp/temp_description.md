@@ -33,3 +33,11 @@ This function is used if --update is parsed. It returns a list of all stations w
 #### sorting_hat(get_files)
 Sorts the data by station. Returns a dictionary with the stationname as key, and each message contains data from one timestamp.
 
+#### json_to_ds(msg)
+Converts the json-data sorted by the sorting_hat function to pandas dataframe to xarray dataset. Start of by sorting which variables should have both a vertical(pressure) and a time coordinate, and which ones are only dependent on time. Adding variable attributes as well as global attributes.
+
+#### set_encoding(ds, fill=-9999, time_name = 'time', time_units='seconds since 1970-01-01 00:00:00')
+Returns a dictionary with the encoding. Have had some trouble with the time encoding, but it should be fixed by now.
+
+#### saving_grace(file, key, destdir)
+sorts ds into monthly data and saves each of the new dfs. Some global attributes have to be unique for each save, so these are added in this function.
